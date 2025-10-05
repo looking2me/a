@@ -52,12 +52,26 @@ end
 
 
 function ReadFile(Name) 
-	if isfile(FileName.."/"..GameName.."/"..Name) == true then
-		return readfile(FileName.."/"..GameName.."/"..Name)
-	else
+	-- Normalize absolute paths like .../EdHub/Islands/Schematica/Shop spawn -> Schematica/Shop spawn
+	local base = FileName.."/"..GameName.."/"
+	local normalized = Name
+	local startIndex = string.find(Name, base, 1, true)
+	if startIndex then
+		normalized = string.sub(Name, startIndex + #base)
+	end
+
+	-- Only perform reads inside our sandboxed base directory
+	if isfile(base..normalized) == true then
+		return readfile(base..normalized)
+	end
+	if isfile(FileName.."/"..GameName..Name) == true then
 		return readfile(FileName.."/"..GameName..Name)
 	end
-	return readfile(FileName.."/"..GameName.."/"..Name)
+	if isfile(Name) == true and not string.match(Name, "^/") then
+		-- Last-gasp relative path without a leading slash
+		return readfile(Name)
+	end
+	return nil
 end
 
 function CreateFolder(Name)
