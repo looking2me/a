@@ -5634,6 +5634,49 @@ end
 
 	local previousDistance
 
+	-- Helper to resize a part by face in grid steps while keeping it aligned
+	local function resizeAdornee(part, normal, sizeDelta)
+		if not part or not part:IsA("BasePart") then return false end
+		if sizeDelta == 0 then return true end
+
+		-- Map NormalId to axis and direction
+		local axis, direction
+		if normal == Enum.NormalId.Right then axis, direction = "X", 1
+		elseif normal == Enum.NormalId.Left then axis, direction = "X", -1
+		elseif normal == Enum.NormalId.Top then axis, direction = "Y", 1
+		elseif normal == Enum.NormalId.Bottom then axis, direction = "Y", -1
+		elseif normal == Enum.NormalId.Back then axis, direction = "Z", 1
+		elseif normal == Enum.NormalId.Front then axis, direction = "Z", -1
+		else return false end
+
+		local newSize = part.Size
+		local deltaVec = Vector3.new(0,0,0)
+		local moveVec = Vector3.new(0,0,0)
+
+		if axis == "X" then
+			newSize = Vector3.new(math.max(3, newSize.X + sizeDelta), newSize.Y, newSize.Z)
+			deltaVec = Vector3.new(sizeDelta, 0, 0)
+			moveVec = Vector3.new((sizeDelta/2) * direction, 0, 0)
+		elseif axis == "Y" then
+			newSize = Vector3.new(newSize.X, math.max(3, newSize.Y + sizeDelta), newSize.Z)
+			deltaVec = Vector3.new(0, sizeDelta, 0)
+			moveVec = Vector3.new(0, (sizeDelta/2) * direction, 0)
+		elseif axis == "Z" then
+			newSize = Vector3.new(newSize.X, newSize.Y, math.max(3, newSize.Z + sizeDelta))
+			deltaVec = Vector3.new(0, 0, sizeDelta)
+			moveVec = Vector3.new(0, 0, (sizeDelta/2) * direction)
+		end
+
+		-- Apply size and keep it snapped by 3 studs
+		part.Size = Vector3.new(
+			math.max(3, math.floor(newSize.X/3 + 0.5) * 3),
+			math.max(3, math.floor(newSize.Y/3 + 0.5) * 3),
+			math.max(3, math.floor(newSize.Z/3 + 0.5) * 3)
+		)
+		part.CFrame = part.CFrame * CFrame.new(moveVec)
+		return true
+	end
+
 	function GetBlockCount()
 		local positions = {}
 
@@ -5775,7 +5818,7 @@ end
 				local sizeDelta = math.floor(delta / 3 + 0.5) * 3
 				OldSIZE = handles.Adornee.Size
 				OldPOS = handles.Adornee.Position
-				if handles.Adornee:Resize(normal, sizeDelta) then
+				if resizeAdornee(handles.Adornee, normal, sizeDelta) then
 					print("Versuche zu Resizen")
 					print("normal",normal)
 					print("sizeDelta",sizeDelta)
@@ -5842,7 +5885,8 @@ end
 					NP.Material = Enum.Material.Neon
 					selectionBox.Adornee = NP
 					handles.Adornee = NP
-					handles.Faces = NP.ResizeableFaces
+					-- Expose all faces for resizing
+					handles.Faces = Enum.NormalId.Right + Enum.NormalId.Left + Enum.NormalId.Top + Enum.NormalId.Bottom + Enum.NormalId.Front + Enum.NormalId.Back
 					MainPart = NP
 				else
 					print(tostring(OLD.Size))
@@ -7301,16 +7345,32 @@ end
 					end
 				end
 
-				if 	game:GetService("Workspace"):FindFirstChild("NewPart") then
+				-- Optimized cloning: use lightweight templates from ReplicatedStorage and batch with yields
+				local ALLBLOCKS = game:GetService("ReplicatedStorage").Blocks
+				local created = 0
+				if game:GetService("Workspace"):FindFirstChild("NewPart") then
 					local PART = game:GetService("Workspace"):FindFirstChild("NewPart")
 					local BLOCKS = GetBlocks(PART.Position, PART.Size, PART)
-					for i,SB in pairs(BLOCKS) do
-						if SB.Parent.Name == "Blocks" then
-							local NEWSB = SB:Clone()
-							NEWSB.Parent = CloneFolder
-							NEWSB.Position = SB.Position + Vector3.new(0,3,0)
-
-							NEWSB.Transparency = 0.5
+					for _, SB in pairs(BLOCKS) do
+						if SB and SB.Parent and SB.Parent.Name == "Blocks" then
+							local template = ALLBLOCKS:FindFirstChild(SB.Name)
+							local clone
+							if template and template:FindFirstChild("Root") then
+								clone = template.Root:Clone()
+							else
+								clone = Instance.new("Part")
+								clone.Size = Vector3.new(3,3,3)
+								clone.Name = SB.Name
+							end
+							clone.Anchored = true
+							clone.CanCollide = false
+							clone.CastShadow = false
+							clone.Massless = true
+							clone.Transparency = 0.5
+							clone.CFrame = SB.CFrame + Vector3.new(0,3,0)
+							clone.Parent = CloneFolder
+							created = created + 1
+							if created % 150 == 0 then task.wait() end
 						end
 					end
 				end
