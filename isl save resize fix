@@ -5657,9 +5657,9 @@ end
 
 
 
-		for x = start.x, finish.x, 3 do
-			for y = start.y, finish.y, 3 do
-				for z = start.z, finish.z, 3 do
+		for x = start.x, finish.x, 1 do
+			for y = start.y, finish.y, 1 do
+				for z = start.z, finish.z, 1 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -6498,9 +6498,9 @@ end
 		local finish = _G.EndBlock.Position
 		start, finish = checkPositions(start, finish)
 
-		for x = start.x, finish.x, 3 do
-			for y = start.y, finish.y, 3 do
-				for z = start.z, finish.z, 3 do
+		for x = start.x, finish.x, 1 do
+			for y = start.y, finish.y, 1 do
+				for z = start.z, finish.z, 1 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -6511,7 +6511,7 @@ end
 
 		local ADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDANTILAG = false
 
-		local MAXPLACEDIS = XX or 50
+		local MAXPLACEDIS = XX or 999999
 
 		for i,v in ipairs(positions) do
 			if v ~= nil then
@@ -6659,9 +6659,9 @@ end
 		local finish = _G.EndBlock.Position
 		start, finish = checkPositions(start, finish)
 
-		for x = start.x, finish.x, 3 do
-			for y = start.y, finish.y, 3 do
-				for z = start.z, finish.z, 3 do
+		for x = start.x, finish.x, 1 do
+			for y = start.y, finish.y, 1 do
+				for z = start.z, finish.z, 1 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -6695,10 +6695,10 @@ end
 				task.spawn(function()
 					if v then
 						local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude
-						if dis > 30 then
+						if dis > 999999 then
 							if _G.BlockPrinterTP == true then
 								TeleportV4(v + Vector3.new(0,10,0))
-								repeat wait(0.1) TeleportV4(v + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude < 30
+								repeat wait(0.1) TeleportV4(v + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude < 999999
 								if v then
 									PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
 									positions[i] = nil
@@ -6937,11 +6937,11 @@ end
 							if SB and SB.Parent and SB.Parent.Name == "Blocks" then
 								DebugCheck(0,"SB:",SB.Name)
 								local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude
-								if dis > 10 then
+								if dis > 999999 then
 									DebugCheck(0,"IDS")
 									if _G.BlockPrinterTP == true then
 										TeleportV4(SB.Position + Vector3.new(0,10,0))
-										repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 10
+										repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 999999
 										if v then
 											DebugCheck(0,"VTRUE")
 											DestroyBlock(SB)
@@ -7830,19 +7830,12 @@ end
 			Callback = function()
 				pcall(unequipped)
 
-				local function roundToMultipleOfThree(value)
-					local roundedValue = math.floor(value / 3 + 0.5) * 3
-					return roundedValue
-				end
-
+				-- Remove rounding limitations for unlimited resizing
 				local player = game.Players.LocalPlayer 
 				local Position = player.Character.HumanoidRootPart.Position
 
-				local roundedNumber_x = roundToMultipleOfThree(Position.X)
-				local roundedNumber_y = roundToMultipleOfThree(Position.Y)
-				local roundedNumber_z = roundToMultipleOfThree(Position.Z)
-
-				local Final = Vector3.new(roundedNumber_x, roundedNumber_y, roundedNumber_z)
+				-- Use exact position without any rounding restrictions
+				local Final = Vector3.new(Position.X, Position.Y, Position.Z)
 
 
 				if not Final then Message("Error", "NBF", "?", 1) return nil end
