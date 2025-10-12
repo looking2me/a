@@ -5634,6 +5634,49 @@ end
 
 	local previousDistance
 
+	-- Helper to resize a part by face in grid steps while keeping it aligned
+	local function resizeAdornee(part, normal, sizeDelta)
+		if not part or not part:IsA("BasePart") then return false end
+		if sizeDelta == 0 then return true end
+
+		-- Map NormalId to axis and direction
+		local axis, direction
+		if normal == Enum.NormalId.Right then axis, direction = "X", 1
+		elseif normal == Enum.NormalId.Left then axis, direction = "X", -1
+		elseif normal == Enum.NormalId.Top then axis, direction = "Y", 1
+		elseif normal == Enum.NormalId.Bottom then axis, direction = "Y", -1
+		elseif normal == Enum.NormalId.Back then axis, direction = "Z", 1
+		elseif normal == Enum.NormalId.Front then axis, direction = "Z", -1
+		else return false end
+
+		local newSize = part.Size
+		local deltaVec = Vector3.new(0,0,0)
+		local moveVec = Vector3.new(0,0,0)
+
+		if axis == "X" then
+			newSize = Vector3.new(math.max(3, newSize.X + sizeDelta), newSize.Y, newSize.Z)
+			deltaVec = Vector3.new(sizeDelta, 0, 0)
+			moveVec = Vector3.new((sizeDelta/2) * direction, 0, 0)
+		elseif axis == "Y" then
+			newSize = Vector3.new(newSize.X, math.max(3, newSize.Y + sizeDelta), newSize.Z)
+			deltaVec = Vector3.new(0, sizeDelta, 0)
+			moveVec = Vector3.new(0, (sizeDelta/2) * direction, 0)
+		elseif axis == "Z" then
+			newSize = Vector3.new(newSize.X, newSize.Y, math.max(3, newSize.Z + sizeDelta))
+			deltaVec = Vector3.new(0, 0, sizeDelta)
+			moveVec = Vector3.new(0, 0, (sizeDelta/2) * direction)
+		end
+
+		-- Apply size and keep it snapped by 3 studs
+		part.Size = Vector3.new(
+			math.max(3, math.floor(newSize.X/3 + 0.5) * 3),
+			math.max(3, math.floor(newSize.Y/3 + 0.5) * 3),
+			math.max(3, math.floor(newSize.Z/3 + 0.5) * 3)
+		)
+		part.CFrame = part.CFrame * CFrame.new(moveVec)
+		return true
+	end
+
 	function GetBlockCount()
 		local positions = {}
 
@@ -5657,9 +5700,9 @@ end
 
 
 
-		for x = start.x, finish.x, 1 do
-			for y = start.y, finish.y, 1 do
-				for z = start.z, finish.z, 1 do
+		for x = start.x, finish.x, 3 do
+			for y = start.y, finish.y, 3 do
+				for z = start.z, finish.z, 3 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -5775,7 +5818,7 @@ end
 				local sizeDelta = math.floor(delta / 3 + 0.5) * 3
 				OldSIZE = handles.Adornee.Size
 				OldPOS = handles.Adornee.Position
-				if handles.Adornee:Resize(normal, sizeDelta) then
+				if resizeAdornee(handles.Adornee, normal, sizeDelta) then
 					print("Versuche zu Resizen")
 					print("normal",normal)
 					print("sizeDelta",sizeDelta)
@@ -5842,7 +5885,8 @@ end
 					NP.Material = Enum.Material.Neon
 					selectionBox.Adornee = NP
 					handles.Adornee = NP
-					handles.Faces = NP.ResizeableFaces
+					-- Expose all faces for resizing
+					handles.Faces = Enum.NormalId.Right + Enum.NormalId.Left + Enum.NormalId.Top + Enum.NormalId.Bottom + Enum.NormalId.Front + Enum.NormalId.Back
 					MainPart = NP
 				else
 					print(tostring(OLD.Size))
@@ -6398,14 +6442,25 @@ end
 		end
 
 		function onMove(face, distance)
-			-- Remove all step size limitations for unlimited resizing
-			local move = Vector3.FromNormalId(face) * distance
+			local step = moveSnap(distance, selected.ResizeIncrement)
+			local move = Vector3.FromNormalId(face) * step
+
+			local stepSize = 3
+			local roundedDistance = math.floor(distance / stepSize + 0.5) * stepSize
+			local resizedStep = moveSnap(roundedDistance, selected.ResizeIncrement)
+			local resizedMove = Vector3.FromNormalId(face) * resizedStep
 
 			print("move:",move)
-			print("distance:",distance)
 
-			-- Apply the move directly without any step size restrictions
-			CloneFolder:SetPrimaryPartCFrame(lastCframe * CFrame.new(move))
+			print("roundedDistance:",roundedDistance)
+
+			print("resizedStep:",resizedStep)
+
+			print("resizedMove:",resizedMove)
+
+			-- selected.CFrame = lastCframe * CFrame.new(resizedMove)
+
+			CloneFolder:SetPrimaryPartCFrame(lastCframe * CFrame.new(resizedMove))
 
 		end
 
@@ -6498,9 +6553,9 @@ end
 		local finish = _G.EndBlock.Position
 		start, finish = checkPositions(start, finish)
 
-		for x = start.x, finish.x, 1 do
-			for y = start.y, finish.y, 1 do
-				for z = start.z, finish.z, 1 do
+		for x = start.x, finish.x, 3 do
+			for y = start.y, finish.y, 3 do
+				for z = start.z, finish.z, 3 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -6511,7 +6566,7 @@ end
 
 		local ADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDANTILAG = false
 
-		local MAXPLACEDIS = XX or 999999
+		local MAXPLACEDIS = XX or 50
 
 		for i,v in ipairs(positions) do
 			if v ~= nil then
@@ -6659,9 +6714,9 @@ end
 		local finish = _G.EndBlock.Position
 		start, finish = checkPositions(start, finish)
 
-		for x = start.x, finish.x, 1 do
-			for y = start.y, finish.y, 1 do
-				for z = start.z, finish.z, 1 do
+		for x = start.x, finish.x, 3 do
+			for y = start.y, finish.y, 3 do
+				for z = start.z, finish.z, 3 do
 					positions[#positions + 1] = Vector3.new(x, y, z)
 				end
 			end
@@ -6695,10 +6750,10 @@ end
 				task.spawn(function()
 					if v then
 						local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude
-						if dis > 999999 then
+						if dis > 30 then
 							if _G.BlockPrinterTP == true then
 								TeleportV4(v + Vector3.new(0,10,0))
-								repeat wait(0.1) TeleportV4(v + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude < 999999
+								repeat wait(0.1) TeleportV4(v + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude < 30
 								if v then
 									PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
 									positions[i] = nil
@@ -6937,11 +6992,11 @@ end
 							if SB and SB.Parent and SB.Parent.Name == "Blocks" then
 								DebugCheck(0,"SB:",SB.Name)
 								local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude
-								if dis > 999999 then
+								if dis > 10 then
 									DebugCheck(0,"IDS")
 									if _G.BlockPrinterTP == true then
 										TeleportV4(SB.Position + Vector3.new(0,10,0))
-										repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 999999
+										repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 10
 										if v then
 											DebugCheck(0,"VTRUE")
 											DestroyBlock(SB)
@@ -7290,16 +7345,32 @@ end
 					end
 				end
 
-				if 	game:GetService("Workspace"):FindFirstChild("NewPart") then
+				-- Optimized cloning: use lightweight templates from ReplicatedStorage and batch with yields
+				local ALLBLOCKS = game:GetService("ReplicatedStorage").Blocks
+				local created = 0
+				if game:GetService("Workspace"):FindFirstChild("NewPart") then
 					local PART = game:GetService("Workspace"):FindFirstChild("NewPart")
 					local BLOCKS = GetBlocks(PART.Position, PART.Size, PART)
-					for i,SB in pairs(BLOCKS) do
-						if SB.Parent.Name == "Blocks" then
-							local NEWSB = SB:Clone()
-							NEWSB.Parent = CloneFolder
-							NEWSB.Position = SB.Position + Vector3.new(0,3,0)
-
-							NEWSB.Transparency = 0.5
+					for _, SB in pairs(BLOCKS) do
+						if SB and SB.Parent and SB.Parent.Name == "Blocks" then
+							local template = ALLBLOCKS:FindFirstChild(SB.Name)
+							local clone
+							if template and template:FindFirstChild("Root") then
+								clone = template.Root:Clone()
+							else
+								clone = Instance.new("Part")
+								clone.Size = Vector3.new(3,3,3)
+								clone.Name = SB.Name
+							end
+							clone.Anchored = true
+							clone.CanCollide = false
+							clone.CastShadow = false
+							clone.Massless = true
+							clone.Transparency = 0.5
+							clone.CFrame = SB.CFrame + Vector3.new(0,3,0)
+							clone.Parent = CloneFolder
+							created = created + 1
+							if created % 150 == 0 then task.wait() end
 						end
 					end
 				end
@@ -7830,12 +7901,19 @@ end
 			Callback = function()
 				pcall(unequipped)
 
-				-- Remove rounding limitations for unlimited resizing
+				local function roundToMultipleOfThree(value)
+					local roundedValue = math.floor(value / 3 + 0.5) * 3
+					return roundedValue
+				end
+
 				local player = game.Players.LocalPlayer 
 				local Position = player.Character.HumanoidRootPart.Position
 
-				-- Use exact position without any rounding restrictions
-				local Final = Vector3.new(Position.X, Position.Y, Position.Z)
+				local roundedNumber_x = roundToMultipleOfThree(Position.X)
+				local roundedNumber_y = roundToMultipleOfThree(Position.Y)
+				local roundedNumber_z = roundToMultipleOfThree(Position.Z)
+
+				local Final = Vector3.new(roundedNumber_x, roundedNumber_y, roundedNumber_z)
 
 
 				if not Final then Message("Error", "NBF", "?", 1) return nil end
