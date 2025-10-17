@@ -7365,38 +7365,43 @@ end
 
 				]]
 
-				for i,pos in pairs(positions) do
-					task.spawn(function()
-						local Block = positions[i]
-						local pos = Block.CFrame
+				local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				if not hrp then return end
+				local PASTE_RADIUS = _G.PasteRadius or 30
+				local CHUNK = _G.PasteChunkSize or 100
+				local DELAY = _G.PasteChunkDelay or 0.03
+				local processed = 0
+				local tooFarCount = 0
+
+				for _, Block in ipairs(CloneFolder:GetChildren()) do
+					if Block and (Block:IsA("BasePart") or Block:IsA("MeshPart")) then
 						if Block.Name == "soil" then
 							Block.Name = "grass"
 							PLOW = true
 						end
-
-						local hrp = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-						if not hrp then return end
 						local distance = (Block.Position - hrp.Position).Magnitude
-						local PASTE_RADIUS = _G.PasteRadius or 30
-
-						print("distance:", distance)
-
-						if distance > PASTE_RADIUS then
-							Message("Too far", "Walk to the paste location to paste.", "Okay!", 2)
-							return
-						end
-
-						local args = {
-							[1] = {
-								["upperBlock"] = false,
-								["cframe"] = pos,
-								["blockType"] = Block.Name,
-								[CropPlaceH1] = CropPlaceH2
+						if distance <= PASTE_RADIUS then
+							local args = {
+								[1] = {
+									["upperBlock"] = false,
+									["cframe"] = Block.CFrame,
+									["blockType"] = Block.Name,
+									[CropPlaceH1] = CropPlaceH2
+								}
 							}
-						}
+							game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))
+						else
+							tooFarCount = tooFarCount + 1
+						end
+						processed = processed + 1
+						if processed % CHUNK == 0 then
+							task.wait(DELAY)
+						end
+					end
+				end
 
-						game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))
-					end)
+				if tooFarCount > 0 then
+					Message("Too far", "Skipped "..tostring(tooFarCount).." blocks. Walk closer and click Paste again.", "Okay!", 3)
 				end
 
 
