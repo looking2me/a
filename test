@@ -7401,7 +7401,49 @@ end
 				end
 
 				if tooFarCount > 0 then
-					Message("Too far", "Skipped "..tostring(tooFarCount).." blocks. Walk closer and click Paste again.", "Okay!", 3)
+					_G.PastePending = _G.PastePending or {}
+					for _, Block in ipairs(CloneFolder:GetChildren()) do
+						if Block and (Block:IsA("BasePart") or Block:IsA("MeshPart")) then
+							local distance = (Block.Position - hrp.Position).Magnitude
+							if distance > PASTE_RADIUS then
+								table.insert(_G.PastePending, {cframe = Block.CFrame, name = Block.Name})
+							end
+						end
+					end
+					Message("Info", tostring(tooFarCount).." blocks queued. Walk near them to auto-paste.", "Okay!", 3)
+					if not _G.PasteRunner then
+						local RS = game:GetService("RunService")
+						_G.PasteRunner = RS.Heartbeat:Connect(function()
+							local player = game.Players.LocalPlayer
+							local character = player.Character
+							local root = character and character:FindFirstChild("HumanoidRootPart")
+							if not root then return end
+							if not _G.PastePending or #_G.PastePending == 0 then return end
+							local radius = _G.PasteRadius or 30
+							local perTick = _G.PastePerTick or 20
+							local placed = 0
+							for i = #_G.PastePending, 1, -1 do
+								local item = _G.PastePending[i]
+								if item and item.cframe then
+									local pos = item.cframe.Position
+									if (pos - root.Position).Magnitude <= radius then
+										local args = {
+											[1] = {
+												["upperBlock"] = false,
+												["cframe"] = item.cframe,
+												["blockType"] = item.name,
+												[CropPlaceH1] = CropPlaceH2
+											}
+										}
+										game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))
+										table.remove(_G.PastePending, i)
+										placed = placed + 1
+										if placed >= perTick then break end
+									end
+								end
+							end
+						end)
+					end
 				end
 
 
