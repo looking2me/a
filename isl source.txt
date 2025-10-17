@@ -152,6 +152,9 @@ else
 	CloneFolder = F
 end
 
+-- Global variables for mob farming
+local LastMob = nil -- Tracks the current target mob for consistent farming
+
 function DeleteIsland(PASSWORD)
 	if PASSWORD == "UI NB)QUN BGTUI(O $ I)ONHZIO$NUI GOH)U$UB GZ)($NZOU IGHN$)(TMI)(O)" then 
 		game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("CLIENT_RESET_ISLAND_REQUEST"):InvokeServer()
@@ -1527,7 +1530,7 @@ if DeveloperVersion == false then
 			Size = UDim2.fromOffset(580, 460),
 			Acrylic = true, -- The blur may be detectable, setting this to false disables blur entirely
 			Theme = "Dark",
-			MinimizeKey = Enum.KeyCode.LeftControl -- Used when theres no MinimizeKeybind
+			MinimizeKey = Enum.KeyCode.RightControl -- Used when theres no MinimizeKeybind
 		})
 
 		Tabs = {
@@ -1551,7 +1554,7 @@ if DeveloperVersion == false then
 			Size = UDim2.fromOffset(580, 460),
 			Acrylic = true, -- The blur may be detectable, setting this to false disables blur entirely
 			Theme = "Dark",
-			MinimizeKey = Enum.KeyCode.LeftControl -- Used when theres no MinimizeKeybind
+			MinimizeKey = Enum.KeyCode.RightControl -- Used when theres no MinimizeKeybind
 		})
 
 		Tabs = {
@@ -1573,7 +1576,7 @@ else
 		Size = UDim2.fromOffset(580, 460),
 		Acrylic = true, -- The blur may be detectable, setting this to false disables blur entirely
 		Theme = "Dark",
-		MinimizeKey = Enum.KeyCode.LeftControl -- Used when theres no MinimizeKeybind
+		MinimizeKey = Enum.KeyCode.RightControl -- Used when theres no MinimizeKeybind
 	})
 
 	Tabs = {
@@ -2175,37 +2178,43 @@ function FarmMob(V)
 	DebugCheck(0,"FarmMob")
 	local SelectedMob
 
-	local MobsToScan = {}
-	if V == true then
-		SelectedMob = game:GetService("Workspace").WildernessIsland.Entities:FindFirstChild(_G.SelectedBoss)
+	-- Check if we already have a target mob that's still alive
+	if LastMob and LastMob.Parent and LastMob:FindFirstChild("HumanoidRootPart") then
+		SelectedMob = LastMob
+		print("FarmMob: Continuing with previous target:", SelectedMob.Name)
 	else
-
-
-		for i,v in pairs(game:GetService("Workspace").WildernessIsland.Entities:GetChildren()) do
-			if v and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-				print("HUMANOID/ROOTAPRT")
-				if type(_G.SelectedMob) == "table" then
-					for i,x in pairs(_G.SelectedMob) do
-						if v.Name == x then
+		-- Find a new target mob
+		LastMob = nil
+		local MobsToScan = {}
+		if V == true then
+			SelectedMob = game:GetService("Workspace").WildernessIsland.Entities:FindFirstChild(_G.SelectedBoss)
+		else
+			for i,v in pairs(game:GetService("Workspace").WildernessIsland.Entities:GetChildren()) do
+				if v and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+					print("HUMANOID/ROOTAPRT")
+					if type(_G.SelectedMob) == "table" then
+						for i,x in pairs(_G.SelectedMob) do
+							if v.Name == x then
+								print("ADDED!",v.Name)
+								table.insert(MobsToScan, v)
+							else
+								print("x ist:",x.." Mob heißt:",v)
+							end
+						end
+					else
+						if v.Name == _G.SelectedMob then
 							print("ADDED!",v.Name)
 							table.insert(MobsToScan, v)
 						else
-							print("x ist:",x.." Mob heißt:",v)
+							print(v.Name)
 						end
-					end
-				else
-					if v.Name == _G.SelectedMob then
-						print("ADDED!",v.Name)
-						table.insert(MobsToScan, v)
-					else
-						print(v.Name)
 					end
 				end
 			end
-		end
 
-		SelectedMob = findNearestMob(MobsToScan)
-		print("NEWMOB:",SelectedMob)
+			SelectedMob = findNearestMob(MobsToScan)
+			print("NEWMOB:",SelectedMob)
+		end
 	end
 	if SelectedMob ~= nil and SelectedMob then
 
@@ -2347,14 +2356,26 @@ function FarmMob(V)
 								}
 							}
 
+							-- Get the remote event and check if it exists
+							local remoteEvent = nil
+							local remoteName = RemoteData:FindFirstChild("KillRemote")
+							if remoteName then
+								remoteEvent = game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged:FindFirstChild(remoteName.Value)
+							end
+							
+							if not remoteEvent then
+								print("FarmMob: Remote event not found! Remote name:", remoteName and remoteName.Value or "nil")
+								return
+							end
+							
 							if  _G.ragebladeMobFarm == true  then
 								for i = 1,50 do
-									game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged:FindFirstChild(RemoteData:FindFirstChild("KillRemote").Value):FireServer(unpack(args))
+									remoteEvent:FireServer(unpack(args))
 									task.wait()
 								end
 							else
 								for i = 1,5 do
-									game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged:FindFirstChild(RemoteData:FindFirstChild("KillRemote").Value):FireServer(unpack(args))
+									remoteEvent:FireServer(unpack(args))
 									task.wait(0.3)
 								end
 							end
@@ -3575,81 +3596,174 @@ function KillAura()
 	if KILLAURA_COOLDOWN == false then
 		KILLAURA_COOLDOWN = true
 
+		-- Debug: Check if player character exists
+		if not game.Players.LocalPlayer.Character or not game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			print("KillAura: Player character not found!")
+			KILLAURA_COOLDOWN = false
+			return
+		end
+
+		-- Debug: Check if remote data exists
+		if not RemoteData or not RemoteData:FindFirstChild("KillRemote") or not RemoteData:FindFirstChild("KillRemoteHashName") then
+			print("KillAura: Remote data not found!")
+			KILLAURA_COOLDOWN = false
+			return
+		end
+
+		-- Debug: Check if hash values exist
+		if not MotHitH1 or not MotHitH2 then
+			print("KillAura: Hash values not found! MotHitH1:", MotHitH1, "MotHitH2:", MotHitH2)
+			KILLAURA_COOLDOWN = false
+			return
+		end
+
 		if BypassedSowrd == false then
 			if _G.ragebladeMobFarm == true then
 				DebugCheck(0,"ragebladeMobFarm")
-				local aux = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Upbolt/Hydroxide/revision/ohaux.lua"))()
+				local success, result = pcall(function()
+					local aux = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Upbolt/Hydroxide/revision/ohaux.lua"))()
 
-				local Tool = game:GetService("Players").LocalPlayer.Character:FindFirstChild("rageblade")
-				if Tool then
-					local scriptPath = Tool:FindFirstChild("rageblade") -- Hier ist der error von Gestern.
-					local closureName = "Unnamed function"
-					local upvalueIndex = 1
-					local closureConstants = {
-						[1] = "isHitting",
-						[2] = "getLivingEntityFromChildPart",
-						[3] = "attemptHit"
-					}
+					local Tool = game:GetService("Players").LocalPlayer.Character:FindFirstChild("rageblade")
+					if Tool then
+						local scriptPath = Tool:FindFirstChild("rageblade")
+						local closureName = "Unnamed function"
+						local upvalueIndex = 1
+						local closureConstants = {
+							[1] = "isHitting",
+							[2] = "getLivingEntityFromChildPart",
+							[3] = "attemptHit"
+						}
 
-					local closure = aux.searchClosure(scriptPath, closureName, upvalueIndex, closureConstants)
-					local value = 0
-					local elementIndex = "lastClicked"
+						local closure = aux.searchClosure(scriptPath, closureName, upvalueIndex, closureConstants)
+						local value = 0
+						local elementIndex = "lastClicked"
 
+						-- DO NOT RELY ON THIS FEATURE TO PRODUCE 100% FUNCTIONAL SCRIPTS
+						game:GetService("RunService").RenderStepped:Connect(function()
+							debug.getupvalue(closure, upvalueIndex)[elementIndex] = value
+						end)
+					end
 
-					-- DO NOT RELY ON THIS FEATURE TO PRODUCE 100% FUNCTIONAL SCRIPTS
-					game:GetService("RunService").RenderStepped:Connect(function()
+					-- Generated by Hydroxide's Upvalue Scanner: https://github.com/Upbolt/Hydroxide
+
+					local aux = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Upbolt/Hydroxide/revision/ohaux.lua"))()
+
+					local Tool = game:GetService("Players").LocalPlayer.Character:FindFirstChild("rageblade")
+					if Tool then
+						local scriptPath = Tool:FindFirstChild("rageblade")
+						local closureName = "Unnamed function"
+						local upvalueIndex = 1
+						local closureConstants = {
+							[1] = "isHitting",
+							[2] = "getLivingEntityFromChildPart",
+							[3] = "attemptHit"
+						}
+
+						local closure = aux.searchClosure(scriptPath, closureName, upvalueIndex, closureConstants)
+						local value = 4
+						local elementIndex = "speed"
+
 						debug.getupvalue(closure, upvalueIndex)[elementIndex] = value
-					end)
+
+						BypassedSowrd = true
+					end
+				end)
+				
+				if not success then
+					print("KillAura: Rageblade bypass failed:", result)
 				end
-
-				-- Generated by Hydroxide's Upvalue Scanner: https://github.com/Upbolt/Hydroxide
-
-				local aux = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Upbolt/Hydroxide/revision/ohaux.lua"))()
-
-				local Tool = game:GetService("Players").LocalPlayer.Character:FindFirstChild("rageblade")
-				if Tool then
-					local scriptPath = Tool:FindFirstChild("rageblade") -- Hier ist der error von Gestern.
-					local closureName = "Unnamed function"
-					local upvalueIndex = 1
-					local closureConstants = {
-						[1] = "isHitting",
-						[2] = "getLivingEntityFromChildPart",
-						[3] = "attemptHit"
-					}
-
-					local closure = aux.searchClosure(scriptPath, closureName, upvalueIndex, closureConstants)
-					local value = 4
-					local elementIndex = "speed"
-
-
-					debug.getupvalue(closure, upvalueIndex)[elementIndex] = value
-
-					BypassedSowrd = true
-				end
-
 			end
 		end
 
-		if ANTICONSOLEWARNLOGANIMATION2 == false then
-			ANTICONSOLEWARNLOGANIMATION2 = true
-			task.spawn(function()
-				for i,v in pairs(game:GetService('Players'):GetChildren()) do
-					if v and v.Character and v.Character:FindFirstChild("Humanoid") then
-						Player = v.Name
-						AnimationId = "5328169716"
-						local Anim = Instance.new("Animation")
-						Anim.AnimationId = "rbxassetid://"..AnimationId
-						local k = game.Players[Player].Character.Humanoid:LoadAnimation(Anim)
-						k:Play() --Play the animation
-						k:AdjustSpeed(0)
+		-- Auto-equip best weapon for KillAura
+		local function equipBestWeapon()
+			local bestWeapon = nil
+			local bestDamage = 0
+			
+			-- Function to get damage from a weapon
+			local function getWeaponDamage(tool)
+				-- Try different damage property names
+				local damageProperties = {"Damage", "damage", "Attack", "attack", "Power", "power", "Strength", "strength"}
+				
+				for _, propName in pairs(damageProperties) do
+					local damageValue = tool:FindFirstChild(propName)
+					if damageValue and damageValue:IsA("IntValue") or damageValue:IsA("NumberValue") then
+						return damageValue.Value
 					end
 				end
-				wait(5)
-				ANTICONSOLEWARNLOGANIMATION2 = false
-			end)
-		end	
-
-		-- game.Players.LocalPlayer.Character:MoveTo(NM:FindFirstChild("HumanoidRootPart").Position)
+				
+				-- If no damage property found, try to get it from the tool's name
+				local toolName = tool.Name:lower()
+				if toolName:find("wooden") then
+					return 1
+				elseif toolName:find("stone") then
+					return 2
+				elseif toolName:find("iron") then
+					return 3
+				elseif toolName:find("gold") then
+					return 4
+				elseif toolName:find("diamond") then
+					return 5
+				elseif toolName:find("opal") then
+					return 6
+				elseif toolName:find("emerald") then
+					return 7
+				elseif toolName:find("ruby") then
+					return 8
+				elseif toolName:find("sapphire") then
+					return 9
+				elseif toolName:find("topaz") then
+					return 10
+				else
+					return 1 -- Default damage for unknown weapons
+				end
+			end
+			
+			-- Check character for equipped weapon
+			local character = game.Players.LocalPlayer.Character
+			if character then
+				for _, tool in pairs(character:GetChildren()) do
+					if tool:IsA("Tool") then
+						local damage = getWeaponDamage(tool)
+						print("KillAura: Found weapon in character:", tool.Name, "Damage:", damage)
+						if damage > bestDamage then
+							bestDamage = damage
+							bestWeapon = tool
+						end
+					end
+				end
+			end
+			
+			-- Check backpack for better weapons
+			local backpack = game.Players.LocalPlayer:FindFirstChild("Backpack")
+			if backpack then
+				for _, tool in pairs(backpack:GetChildren()) do
+					if tool:IsA("Tool") then
+						local damage = getWeaponDamage(tool)
+						print("KillAura: Found weapon in backpack:", tool.Name, "Damage:", damage)
+						if damage > bestDamage then
+							bestDamage = damage
+							bestWeapon = tool
+						end
+					end
+				end
+			end
+			
+			-- Equip the best weapon
+			if bestWeapon and bestWeapon.Parent == backpack then
+				bestWeapon.Parent = character
+				print("KillAura: Equipped weapon:", bestWeapon.Name, "Damage:", bestDamage)
+			elseif bestWeapon then
+				print("KillAura: Using equipped weapon:", bestWeapon.Name, "Damage:", bestDamage)
+			else
+				print("KillAura: No weapons found in inventory")
+			end
+			
+			return bestWeapon
+		end
+		
+		-- Equip best weapon
+		local currentWeapon = equipBestWeapon()
 
 		local function findNearestMob(A)
 			closestPart = nil
@@ -3659,7 +3773,7 @@ function KillAura()
 			Table = A
 
 			for i, part in ipairs(Table) do
-				if part:FindFirstChild("HumanoidRootPart") then
+				if part and part:FindFirstChild("HumanoidRootPart") then
 					local distance = (part:FindFirstChild("HumanoidRootPart").Position - playerPosition).magnitude
 					if distance < closestDistance then
 						closestPart = part
@@ -3671,21 +3785,192 @@ function KillAura()
 			return closestPart
 		end
 
-		local Mobs = workspace.WildernessIsland.Entities:GetChildren()
+		-- Check if WildernessIsland exists, if not try alternative paths
+		local Mobs = {}
+		if workspace:FindFirstChild("WildernessIsland") and workspace.WildernessIsland:FindFirstChild("Entities") then
+			Mobs = workspace.WildernessIsland.Entities:GetChildren()
+		elseif workspace:FindFirstChild("WildernessIsland") then
+			-- Try to find entities in other locations
+			for _, child in pairs(workspace.WildernessIsland:GetChildren()) do
+				if child:FindFirstChild("Entities") then
+					Mobs = child.Entities:GetChildren()
+					break
+				end
+			end
+		else
+			-- Try to find mobs in workspace directly
+			for _, child in pairs(workspace:GetChildren()) do
+				if child:FindFirstChild("Entities") then
+					Mobs = child.Entities:GetChildren()
+					break
+				end
+			end
+		end
 
-		SelectedMob = findNearestMob(Mobs)
+		-- Filter mobs based on selected mob from main tab
+		local FilteredMobs = {}
+		if _G.SelectedMob then
+			print("KillAura: Filtering for selected mob:", _G.SelectedMob)
+			
+			if type(_G.SelectedMob) == "table" then
+				-- Handle multiple selected mobs
+				for _, mob in pairs(Mobs) do
+					if mob and mob:FindFirstChild("HumanoidRootPart") then
+						for _, selectedMobName in pairs(_G.SelectedMob) do
+							if mob.Name == selectedMobName then
+								table.insert(FilteredMobs, mob)
+								break
+							end
+						end
+					end
+				end
+			else
+				-- Handle single selected mob
+				for _, mob in pairs(Mobs) do
+					if mob and mob:FindFirstChild("HumanoidRootPart") and mob.Name == _G.SelectedMob then
+						table.insert(FilteredMobs, mob)
+					end
+				end
+			end
+		else
+			-- If no mob selected, use all mobs
+			FilteredMobs = Mobs
+		end
 
-		local args = {
-			[1] = Hash(),
-			[2] = {
-				[1] = {
-					[MotHitH1] = MotHitH2,
-					["hitUnit"] = SelectedMob
-				}
-			}
-		}
+		print("KillAura: Found", #Mobs, "total mobs,", #FilteredMobs, "filtered for selected mob")
 
-		game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged:FindFirstChild(RemoteData:FindFirstChild("KillRemote").Value):FireServer(unpack(args))
+		-- Get the remote event and check if it exists
+		local remoteEvent = nil
+		local remoteName = RemoteData:FindFirstChild("KillRemote")
+		if remoteName then
+			remoteEvent = game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged:FindFirstChild(remoteName.Value)
+		end
+		
+		if not remoteEvent then
+			print("KillAura: Remote event not found! Remote name:", remoteName and remoteName.Value or "nil")
+			KILLAURA_COOLDOWN = false
+			return
+		end
+		
+		-- Ensure weapon is equipped and ready
+		if not currentWeapon or currentWeapon.Parent ~= game.Players.LocalPlayer.Character then
+			print("KillAura: No weapon equipped, trying to equip best weapon...")
+			currentWeapon = equipBestWeapon()
+			task.wait(0.5) -- Wait for weapon to be equipped
+		end
+		
+		-- Hit multiple mobs at once
+		if #FilteredMobs > 0 then
+			print("KillAura: Targeting", #FilteredMobs, "mobs simultaneously")
+			
+			local totalHits = 0
+			local maxHitsPerMob = 5 -- Hits per mob per activation
+			local maxRounds = 3 -- Number of rounds to hit all mobs
+			
+			for round = 1, maxRounds do
+				print("KillAura: Round", round .. "/" .. maxRounds)
+				
+				for _, mob in pairs(FilteredMobs) do
+					if mob and mob.Parent and mob:FindFirstChild("HumanoidRootPart") then
+						-- Check if we still have a weapon equipped
+						local equippedWeapon = game.Players.LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+						if not equippedWeapon then
+							print("KillAura: No weapon equipped, re-equipping...")
+							currentWeapon = equipBestWeapon()
+							task.wait(0.2)
+							equippedWeapon = game.Players.LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+						end
+						
+						-- Hit this specific mob
+						for hit = 1, maxHitsPerMob do
+							if mob and mob.Parent and mob:FindFirstChild("HumanoidRootPart") then
+								-- Try to use the weapon's hit function first
+								local success = false
+								local hitResult = nil
+								
+								if equippedWeapon then
+									-- Method 1: Try to find and call the weapon's hit function
+									for _, script in pairs(equippedWeapon:GetChildren()) do
+										if script:IsA("LocalScript") or script:IsA("Script") then
+											local success1, result1 = pcall(function()
+												-- Try to find hit function in the script
+												for _, func in pairs(getgc()) do
+													if type(func) == "function" and getfenv(func).script == script then
+														local info = debug.getinfo(func)
+														if info.name == "hit" or info.name == "onHit" or info.name == "attemptHit" then
+															func(mob)
+															return true
+														end
+													end
+												end
+											end)
+											
+											if success1 and result1 then
+												success = true
+												break
+											end
+										end
+									end
+									
+									-- Method 2: Use remote call if weapon hit function fails
+									if not success then
+										local args = {
+											[1] = Hash(),
+											[2] = {
+												[1] = {
+													[MotHitH1] = MotHitH2,
+													["hitUnit"] = mob
+												}
+											}
+										}
+
+										local success2, result2 = pcall(function()
+											remoteEvent:FireServer(unpack(args))
+										end)
+										
+										if success2 then
+											success = true
+											hitResult = "Remote call successful"
+										else
+											hitResult = "Remote call failed: " .. tostring(result2)
+										end
+									else
+										hitResult = "Weapon hit function successful"
+									end
+									
+									if success then
+										totalHits = totalHits + 1
+										print("KillAura: Hit", hit .. "/" .. maxHitsPerMob, "on", mob.Name, "-", hitResult)
+									else
+										print("KillAura: Failed to hit", mob.Name .. ":", hitResult)
+									end
+								else
+									print("KillAura: No weapon available for hitting", mob.Name)
+								end
+								
+								-- Very short delay between hits on same mob
+								task.wait(0.05)
+							else
+								print("KillAura: Mob", mob.Name, "no longer exists, skipping")
+								break
+							end
+						end
+						
+						-- Short delay between different mobs
+						task.wait(0.1)
+					else
+						print("KillAura: Mob no longer valid, skipping")
+					end
+				end
+				
+				-- Delay between rounds
+				task.wait(0.2)
+			end
+			
+			print("KillAura: Completed", totalHits, "total hits across", #FilteredMobs, "mobs")
+		else
+			print("KillAura: No mobs found in range")
+		end
 
 		task.wait(0.4)
 		KILLAURA_COOLDOWN = false
@@ -6607,10 +6892,29 @@ end
 				["blockType"] = ToLace,
 				["upperBlock"] = false
 			}
-			if _G.BlockPrinterTP == true then
-				TeleportV4(position + Vector3.new(0,10,0))
+			
+			-- NO TELEPORTATION - Player must walk manually
+			-- Removed: if _G.BlockPrinterTP == true then TeleportV4(position + Vector3.new(0,10,0)) end
+			
+			-- Use pcall to handle network errors gracefully
+			local success, result = pcall(function()
+				game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(args)
+			end)
+			
+			if not success then
+				warn("Block placement failed:", result)
 			end
-			game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(args)
+			
+			-- Dynamic delay based on ping
+			local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+			local delay = 0.05
+			if ping > 200 then
+				delay = 0.15 -- Longer delay for high ping
+			elseif ping > 100 then
+				delay = 0.1
+			end
+			
+			task.wait(delay)
 		end
 
 		if not game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool") then Message("WARNING!","Please Hold the Block you want to Place!", "Okay!", 3) return nil end 
@@ -6650,9 +6954,10 @@ end
 			end
 		end
 
-		if _G.BlockPrinterTP == true then
-			sFLY(true)
-		end
+		-- Removed automatic flying - player must walk manually
+		-- if _G.BlockPrinterTP == true then
+		-- 	sFLY(true)
+		-- end
 
 		local positions = {}
 
@@ -6685,51 +6990,81 @@ end
 			BlockPlaceCount = BlockPlaceCount + 1
 		end
 
-		task.spawn(function()
-			if positions[1] then
-				TeleportV4(positions[1] + Vector3.new(0,15,0))
-				PlaceBlock(positions[1], ToLace, PlaceHASHName, PlaceHASH)
-			end
-		end)
+		-- Removed initial teleportation - player must walk manually
+		-- task.spawn(function()
+		-- 	if positions[1] then
+		-- 		TeleportV4(positions[1] + Vector3.new(0,15,0))
+		-- 		PlaceBlock(positions[1], ToLace, PlaceHASHName, PlaceHASH)
+		-- 	end
+		-- end)
 
 		DebugCheck(0,"To Place: "..BlockPlaceCount)
 
-		if _G.BlockPrinterTP == true then
-			game.Players.LocalPlayer.Character:MoveTo(game.Players.LocalPlayer.Character.HumanoidRootPart.Position + Vector3.new(0,10,0))
-		end
+		-- Removed automatic movement - player must walk manually
+		-- if _G.BlockPrinterTP == true then
+		-- 	game.Players.LocalPlayer.Character:MoveTo(game.Players.LocalPlayer.Character.HumanoidRootPart.Position + Vector3.new(0,10,0))
+		-- end
 
 		task.wait(2)
 
-		for i = 1,_G.PlayerBlockPrinterSpeed do
-			for i,v in pairs(positions) do
-				task.wait()
-				task.spawn(function()
-					if v then
-						local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude
-						if dis > 30 then
-							if _G.BlockPrinterTP == true then
-								TeleportV4(v + Vector3.new(0,10,0))
-								repeat wait(0.1) TeleportV4(v + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude < 30
-								if v then
-									PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
-									positions[i] = nil
-								end
-							else
-								if v then
-									PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
-									positions[i] = nil
-								end
-							end
-						else
-							if v then
-								PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
-								positions[i] = nil
-							end
+		-- Optimized paste system to reduce lag and handle high ping
+		local function PlaceBlocksInRange()
+			local placedCount = 0
+			local maxBlocksPerFrame = 2 -- Reduced for high ping users
+			local delayBetweenBatches = 0.15 -- Increased delay for high ping
+			
+			-- Get current ping to adjust delays dynamically
+			local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+			if ping > 200 then
+				maxBlocksPerFrame = 1 -- Very conservative for high ping
+				delayBetweenBatches = 0.25
+			elseif ping > 100 then
+				maxBlocksPerFrame = 2
+				delayBetweenBatches = 0.2
+			end
+			
+			for i, v in pairs(positions) do
+				if v then
+					local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v).Magnitude
+					if dis <= 30 then
+						-- Place block immediately if in range
+						PlaceBlock(v, ToLace, PlaceHASHName, PlaceHASH)
+						positions[i] = nil
+						placedCount = placedCount + 1
+						
+						-- Add delay every few blocks to prevent lag and respect ping
+						if placedCount % maxBlocksPerFrame == 0 then
+							task.wait(delayBetweenBatches)
 						end
 					end
-				end)
+				end
 			end
 		end
+		
+		-- Main paste loop - runs until all blocks are placed
+		local function PasteLoop()
+			while true do
+				local remainingBlocks = 0
+				for i, v in pairs(positions) do
+					if v then
+						remainingBlocks = remainingBlocks + 1
+					end
+				end
+				
+				if remainingBlocks == 0 then
+					break -- All blocks placed
+				end
+				
+				-- Place blocks that are in range
+				PlaceBlocksInRange()
+				
+				-- Wait a bit before checking again
+				task.wait(0.2)
+			end
+		end
+		
+		-- Start the paste process
+		task.spawn(PasteLoop)
 
 		print("positions debug: ",type(positions))
 
@@ -6745,13 +7080,14 @@ end
 
 		DebugCheck(0,"FERTIG!!!!!")
 
-		NOFLY()
+		-- Removed NOFLY() and teleportation - player stays where they are
+		-- NOFLY()
 
-		Message("Finished!","Block Printer Finished! (Teleporting back to Start Position...)", "Nice!", 3)
+		Message("Finished!","Block Printer Finished! You can continue building manually.", "Nice!", 3)
 
-		task.wait(0.1)
-
-		TeleportV4(StartPosition)
+		-- Removed automatic teleportation back to start
+		-- task.wait(0.1)
+		-- TeleportV4(StartPosition)
 
 	end
 
@@ -6762,9 +7098,10 @@ end
 
 		local saved = {}
 
+		-- Optimized block breaking function
 		local function DestroyBlock(Block)
 			DebugCheck(0,"DestroyBlock_FUJNC")
-			if Block then
+			if Block and Block.Parent then
 				local H1 = RemoteData:FindFirstChild("TreeHashData").Value
 				local H2 = _G.TreeHash
 
@@ -6772,15 +7109,47 @@ end
 					[H1] = H2,
 					["part"] = Block,
 					["block"] = Block,
-					["norm"] = v,
+					["norm"] = Vector3.new(0, 1, 0), -- Fixed norm value
 					["pos"] = 0
 				}
-				TeleportV4(Block.Position + Vector3.new(0,10,0))
-				game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged.CLIENT_BLOCK_HIT_REQUEST:InvokeServer(ohTable1)
-				task.wait(1)
-				if Block then
-					table.insert(saved,Block)
+				
+				-- Use pcall for error handling
+				local success, result = pcall(function()
+					game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged.CLIENT_BLOCK_HIT_REQUEST:InvokeServer(ohTable1)
+				end)
+				
+				if success then
+					print("Broke block:", Block.Name)
+					table.insert(saved, Block)
+				else
+					warn("Failed to break block:", result)
 				end
+				
+				-- Reduced wait time for faster breaking
+				task.wait(0.1)
+			end
+		end
+		
+		-- Batch block breaking function for multiple blocks
+		local function DestroyBlocksBatch(blocks)
+			local batchSize = 5 -- Break 5 blocks at once
+			local delay = 0.05 -- Very short delay between batches
+			
+			for i = 1, #blocks, batchSize do
+				local batch = {}
+				for j = i, math.min(i + batchSize - 1, #blocks) do
+					table.insert(batch, blocks[j])
+				end
+				
+				-- Process batch simultaneously
+				for _, block in pairs(batch) do
+					task.spawn(function()
+						DestroyBlock(block)
+					end)
+				end
+				
+				-- Short delay between batches
+				task.wait(delay)
 			end
 		end
 
@@ -6840,41 +7209,32 @@ end
 			-- Funktion zum Finden des nächsten Teils
 
 
-			for i = 1,_G.PlayerBlockPrinterSpeed do
-				for i,SB in pairs(BLOCKS) do
-					task.wait()
-					task.spawn(function()
-						if SB and SB.Parent and SB.Parent.Name == "Blocks" then
-							DebugCheck(0,"SB:",SB.Name)
-							local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude
-							if dis > 30 then
-								DebugCheck(0,"IDS")
-								if _G.BlockPrinterTP == true then
-									TeleportV4(SB.Position + Vector3.new(0,10,0))
-									repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 30
-									if v then
-										DebugCheck(0,"VTRUE")
-										DestroyBlock(SB)
-										saved[i] = nil
-									end
-								else
-									if v then
-										DebugCheck(0,"VFALSE")
-										DestroyBlock(SB)
-										saved[i] = nil
-									end
-								end
-							else
-								DebugCheck(0,"NODIS")
-								if SB then
-									DebugCheck(0,"VELSEFALSE")
-									DestroyBlock(SB)
-									saved[i] = nil
-								end
-							end
+			-- Optimized block breaking with batch processing
+			local blocksToBreak = {}
+			
+			-- Collect all blocks that need to be broken
+			for _, SB in pairs(BLOCKS) do
+				if SB and SB.Parent and SB.Parent.Name == "Blocks" then
+					DebugCheck(0,"SB:",SB.Name)
+					local dis = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude
+					
+					if dis <= 30 then
+						-- Block is in range, add to breaking list
+						table.insert(blocksToBreak, SB)
+					else
+						-- Block is far, teleport if enabled
+						if _G.BlockPrinterTP == true then
+							TeleportV4(SB.Position + Vector3.new(0,10,0))
+							repeat wait(0.1) TeleportV4(SB.Position + Vector3.new(0,10,0)) until (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - SB.Position).Magnitude < 30
+							table.insert(blocksToBreak, SB)
 						end
-					end)
+					end
 				end
+			end
+			
+			-- Break blocks in batches for maximum efficiency
+			if #blocksToBreak > 0 then
+				DestroyBlocksBatch(blocksToBreak)
 			end
 		end
 
@@ -7271,6 +7631,11 @@ end
 			Title = "Clone Blocks",
 			Description = "",
 			Callback = function()
+				-- Automatically turn off resize tool when cloning blocks
+				if Options.UseMovingTool and Options.UseMovingTool.Value then
+					Options.UseMovingTool:SetValue(false)
+				end
+				
 				for i,v in ipairs(CloneFolder:GetChildren()) do
 					v:Destroy()
 					DebugCheck(0,v.Name.." Got Deleted!")
@@ -7304,15 +7669,49 @@ end
 				if 	game:GetService("Workspace"):FindFirstChild("NewPart") then
 					local PART = game:GetService("Workspace"):FindFirstChild("NewPart")
 					local BLOCKS = GetBlocks(PART.Position, PART.Size, PART)
+					
+					-- Block counting and listing
+					local blockCounts = {}
+					local totalBlocks = 0
+					local copiedBlocks = {}
+					
 					for i,SB in pairs(BLOCKS) do
 						if SB.Parent.Name == "Blocks" then
+							-- Count block types
+							local blockName = SB.Name
+							blockCounts[blockName] = (blockCounts[blockName] or 0) + 1
+							totalBlocks = totalBlocks + 1
+							
+							-- Clone the block
 							local NEWSB = SB:Clone()
 							NEWSB.Parent = CloneFolder
 							NEWSB.Position = SB.Position + Vector3.new(0,3,0)
-
 							NEWSB.Transparency = 0.5
+							
+							-- Add to copied blocks list
+							table.insert(copiedBlocks, {
+								name = blockName,
+								position = SB.Position,
+								cframe = SB.CFrame
+							})
 						end
 					end
+					
+					-- Display block information
+					print("=== BLOCKS COPIED ===")
+					print("Total blocks copied:", totalBlocks)
+					print("Block types found:")
+					
+					for blockName, count in pairs(blockCounts) do
+						print("  " .. blockName .. ": " .. count .. " blocks")
+					end
+					
+					print("=== END BLOCK LIST ===")
+					
+					-- Show notification with block count
+					Message("Blocks Copied!", "Successfully copied " .. totalBlocks .. " blocks! Check console for details.", "Nice!", 5)
+				else
+					Message("Error!", "No NewPart found! Please select blocks first.", "Okay!", 3)
 				end
 
 			end
@@ -7322,9 +7721,15 @@ end
 			Title = "Paste Blocks",
 			Description = "",
 			Callback = function()
+				-- Automatically disable moving tool when pasting
 				a = pcall(function()
 					unequipped()
 				end)
+				
+				-- Disable moving tool toggle
+				if Options.UseMovingTool then
+					Options.UseMovingTool:SetValue(false)
+				end
 
 				local WAITGAY_XE = 0
 
@@ -7365,56 +7770,138 @@ end
 
 				]]
 
-				for i,pos in pairs(positions) do
-					task.spawn(function()
-
-						local Block = positions[i]
-						local pos = Block.CFrame
-						--if pos and Block then
-						if Block.Name == "soil" then
-							Block.Name = "grass"
-							PLOW = true
-						end
-
-						local distance = (Block.Position - game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude
-
-						print("distance:",distance)
-
-						if distance > 30 then
-
-							TeleportV4(Block.Position)
-
-							repeat wait() until (Block.Position - game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude < 30
-
-							local args = {
-								[1] = {
-									["upperBlock"] = false,
-									["cframe"] = pos, -- CFrame.new(Vector3.new(pos.x, pos.y, pos.z, 1, 0, 0, 0, 1, 0, 0, 0, 1))
-									["blockType"] = Block.Name,
-									[CropPlaceH1] = CropPlaceH2
-								}
-							}
-
-							game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))	
-
-						else
-							local args = {
-								[1] = {
-									["upperBlock"] = false,
-									["cframe"] = pos, -- CFrame.new(Vector3.new(pos.x, pos.y, pos.z, 1, 0, 0, 0, 1, 0, 0, 0, 1))
-									["blockType"] = Block.Name,
-									[CropPlaceH1] = CropPlaceH2
-								}
-							}
-
-							game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))
-
-						end
-
-
-						--end
+				-- Improved paste system with proper preview management
+				local function PlaceBlockSafely(block, position, blockName)
+					local args = {
+						[1] = {
+							["upperBlock"] = false,
+							["cframe"] = position,
+							["blockType"] = blockName,
+							[CropPlaceH1] = CropPlaceH2
+						}
+					}
+					
+					-- Use pcall to handle errors
+					local success, result = pcall(function()
+						game:GetService("ReplicatedStorage").rbxts_include.node_modules:FindFirstChild("@rbxts").net.out._NetManaged.CLIENT_BLOCK_PLACE_REQUEST:InvokeServer(unpack(args))
 					end)
+					
+					if success then
+						print("Placed block:", blockName)
+						return true
+					else
+						warn("Failed to place block:", result)
+						return false
+					end
 				end
+				
+				-- Main paste loop - single threaded to prevent race conditions
+				local function PasteLoop()
+					local totalBlocks = 0
+					local placedBlocks = 0
+					
+					-- Count total blocks first
+					for i, block in pairs(positions) do
+						if block then
+							totalBlocks = totalBlocks + 1
+						end
+					end
+					
+					print("Starting paste process for", totalBlocks, "blocks")
+					
+					while placedBlocks < totalBlocks do
+						local remainingBlocks = {}
+						
+						-- Collect all remaining blocks (check if they exist and are in CloneFolder)
+						for i, block in pairs(positions) do
+							if block and block.Parent == CloneFolder then
+								table.insert(remainingBlocks, {index = i, block = block})
+							end
+						end
+						
+						if #remainingBlocks == 0 then
+							print("No more blocks to process, but placed:", placedBlocks, "total:", totalBlocks)
+							break -- All blocks placed
+						end
+						
+						-- Check each block and place if in range
+						for _, data in pairs(remainingBlocks) do
+							local block = data.block
+							local distance = (block.Position - game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude
+							
+							if distance <= 30 then
+								-- Prepare block name
+								local blockName = block.Name
+								if blockName == "soil" then
+									blockName = "grass"
+									PLOW = true
+								end
+								
+								-- Try to place the block
+								local success = PlaceBlockSafely(block, block.CFrame, blockName)
+								
+								if success then
+									-- Only remove from preview after successful placement
+									block:Destroy()
+									positions[data.index] = nil
+									placedBlocks = placedBlocks + 1
+									print("Successfully placed block", placedBlocks .. "/" .. totalBlocks .. ":", blockName)
+								else
+									print("Failed to place block:", blockName)
+								end
+							end
+						end
+						
+						-- Wait before checking again
+						task.wait(0.2)
+					end
+					
+					print("Paste loop completed. Placed:", placedBlocks, "Total:", totalBlocks)
+				end
+				
+				-- Start the paste process
+				task.spawn(PasteLoop)
+				
+				-- Wait for all blocks to be placed and show completion message
+				task.spawn(function()
+					local startTime = tick()
+					local totalBlocks = 0
+					
+					-- Count total blocks first
+					for i, block in pairs(positions) do
+						if block then
+							totalBlocks = totalBlocks + 1
+						end
+					end
+					
+					print("Total blocks to paste:", totalBlocks)
+					
+					while true do
+						local remainingCount = 0
+						local placedCount = 0
+						
+						-- Count remaining and placed blocks
+						for i, block in pairs(positions) do
+							if block then
+								if block.Parent == CloneFolder then
+									remainingCount = remainingCount + 1
+								else
+									placedCount = placedCount + 1
+								end
+							end
+						end
+						
+						print("Remaining:", remainingCount, "Placed:", placedCount, "Total:", totalBlocks)
+						
+						if remainingCount == 0 and placedCount == totalBlocks then
+							local elapsedTime = tick() - startTime
+							Message("Finished!", "All " .. totalBlocks .. " blocks have been pasted successfully! Time: " .. math.floor(elapsedTime) .. "s", "Nice!", 3)
+							break
+						end
+						
+						task.wait(1)
+					end
+				end)
 
 
 				--[[
@@ -10030,4 +10517,5 @@ game.Players.LocalPlayer:Kick("SCRIPT IS BROKE! WE ARE SORRY. Reload the script 
 
 
 
+	-- end
 	-- end
